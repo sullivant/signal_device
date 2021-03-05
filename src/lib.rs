@@ -1,30 +1,69 @@
-#[macro_use]
-extern crate clap;
 extern crate modbus;
+extern crate yaml_rust;
 
-pub fn signals_hi() {
-    println!("Hello from signals");
-}
-
-use clap::App;
 use modbus::tcp;
 use modbus::Client;
+use yaml_rust::{Yaml, YamlEmitter, YamlLoader};
 
-#[derive(Debug, Copy, Clone)]
-struct Signal {
-    signal_num: usize,
+pub struct SignalDevice {
+    device: String, // The IP/Hostname of the device
+    client: tcp::Transport,
+
+    // TODO: these will be an array built by config file
+    // to also contain name
+    signal_num: u16,
     signal_status: bool,
 }
-impl Signal {
-    fn as_text(&self) -> String {
+impl SignalDevice {
+    pub fn as_text(&self) -> String {
         match &self.signal_status {
             true => "ON".to_string(),
             false => "OFF".to_string(),
         }
     }
+
+    pub fn get_signal(&mut self) -> bool {
+        //let mut client = tcp::Transport::new(&self.device).unwrap();
+        let val: bool = get_signal_status(&mut self.client, self.signal_num);
+
+        val
+    }
+
+    pub fn get_device(&mut self) -> &String {
+        &self.device
+    }
 }
 
-// Reads one coil located at addr
+pub fn new(device: String) -> SignalDevice {
+    let s = "
+signals:
+  diInputSensor:
+    name: diInputSensor
+    type: input
+    offset: 16
+";
+
+    let device_yaml = YamlLoader::load_from_str(s).unwrap();
+    let device_conf = &device_yaml[0];
+
+    let signal_offset_raw = &device_conf["signals"]["diInputSensor"]["offset"];
+    let signal_offset: u16 = signal_offset_raw.as_i64().unwrap_or(0) as u16;
+
+    println!(
+        "Creating device at: {} with signal offset of: {}",
+        device, signal_offset
+    );
+
+    let client = tcp::Transport::new(&device).unwrap();
+    SignalDevice {
+        device,
+        client: client,
+        signal_num: signal_offset,
+        signal_status: false,
+    }
+}
+
+// Reads one discrete input located at addr
 //
 // Parameters:
 //  &mut client: mutable reference to a modbus::Transport client connection
@@ -33,7 +72,7 @@ impl Signal {
 // Returns:
 //  true: if coil is on
 //  false: if coil is off
-pub fn get_modbus_data(client: &mut modbus::Transport, addr: u16) -> bool {
+pub fn get_signal_status(client: &mut modbus::Transport, addr: u16) -> bool {
     let mut retval: bool = false;
 
     for (_n, i) in client
@@ -49,25 +88,4 @@ pub fn get_modbus_data(client: &mut modbus::Transport, addr: u16) -> bool {
     }
 
     retval
-}
-
-pub fn get_signal() {
-    let matches = App::new("modbus_client")
-        .author("Thomas Sullivan")
-        .version(&crate_version!()[..])
-        .about("Modbus TCP Scanner")
-        .args_from_usage("<DEVICE> 'The IP address or hostname of the device.")
-        .get_matches();
-
-    let device = matches.value_of("DEVICE").unwrap_or("192.168.0.1");
-
-    println!("Using device address of: {}", device);
-
-    let mut client = tcp::Transport::new(device).unwrap();
-
-    let addr: u16 = 16;
-
-    let val: bool = get_modbus_data(&mut client, addr);
-
-    println!("{:?}", val);
 }

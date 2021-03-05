@@ -1,5 +1,5 @@
 [package]
-name = "signals"
+name = "signal_device"
 version = "0.1.0"
 authors = ["Thomas Sullivan <thomas.sullivan@protedyne.com>"]
 edition = "2018"
@@ -8,4 +8,4 @@ edition = "2018"
 
 [dependencies]
 modbus = "1.0"
-clap = "*"
+yaml-rust = "0.4"

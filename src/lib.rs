@@ -84,7 +84,7 @@ impl SignalDevice {
 }
 
 pub fn new(device_name: String) -> SignalDevice {
-    let resource_location: String = format!("./resources/{}.yaml", device_name);
+    let resource_location: String = format!("./thingy/resources/{}.yaml", device_name);
     println!("Creating device: {}", device_name);
     println!("Using device configuration at: {}", resource_location);
     let file = File::open(resource_location.clone()).expect("Unable to open file.");

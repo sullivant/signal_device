@@ -9,7 +9,8 @@ use std::io::BufReader;
 use yaml_rust::YamlLoader;
 
 pub struct SignalDevice {
-    device: String, // The IP/Hostname of the device
+    device_name: String,     // The provided name of this device
+    coupler_address: String, // The IP/Hostname of the device
     client: tcp::Transport,
     resource_location: String, // the location of the configuration file for this device
 
@@ -52,6 +53,11 @@ impl Signal {
     pub fn get_signal_offset(&self) -> &u16 {
         &self.signal_offset
     }
+
+    pub fn get_signal_type(&self) -> &String {
+        &self.signal_type
+    }
+
     pub fn get_signal_status(&self) -> &bool {
         //TODO: Make this updated via a scanner thread instead of via direct calls through
         //SignalDevice
@@ -74,18 +80,29 @@ impl SignalDevice {
         get_signal_status(&mut self.client, signal_offset)
     }
 
-    pub fn get_device(&mut self) -> &String {
-        &self.device
+    pub fn get_name(&mut self) -> &String {
+        &self.device_name
+    }
+
+    pub fn get_coupler_address(&mut self) -> &String {
+        &self.coupler_address
     }
 
     pub fn get_resource_location(&mut self) -> &String {
         &self.resource_location
     }
+
+    pub fn to_string(&mut self) -> String {
+        format!(
+            "For signal device {} using address of: {}",
+            &self.device_name, &self.coupler_address
+        )
+    }
 }
 
 pub fn new(device_name: String) -> SignalDevice {
     let resource_location: String = format!("./thingy/resources/{}.yaml", device_name);
-    println!("Creating device: {}", device_name);
+    println!("Creating signal device: {}", device_name);
     println!("Using device configuration at: {}", resource_location);
     let file = File::open(resource_location.clone()).expect("Unable to open file.");
     let mut buf_reader = BufReader::new(file);
@@ -127,7 +144,8 @@ pub fn new(device_name: String) -> SignalDevice {
     let client = tcp::Transport::new(&coupler).unwrap();
 
     SignalDevice {
-        device: coupler.to_string(),
+        device_name: device_name,
+        coupler_address: coupler.to_string(),
         client: client,
         resource_location: resource_location,
         signals: signals,

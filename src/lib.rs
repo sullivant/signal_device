@@ -67,17 +67,25 @@ impl Signal {
 
 impl SignalDevice {
     // Search through the hash of all signals, find the one by name referenced, and return
-    // a reference to the struct <Signal>
-    pub fn get_signal(&mut self) -> &Signal {
+    // a reference to the struct <Signal> or an Err with the details about the missing
+    // signal name
+    pub fn get_signal(&mut self, signal_name: &String) -> Result<&Signal, String> {
         //TODO: Make this return a named signal or ERR
-        &self.signals.first().unwrap()
+        for s in &self.signals {
+            if &s.signal_name == signal_name {
+                return Ok(&s);
+            }
+        }
+
+        Err(format!("Unable to find signal: '{}'", signal_name))
     }
 
-    pub fn get_signal_directly(&mut self) -> bool {
-        //TODO Make this use a named signal or return ERR
-        let signal: &Signal = self.get_signal();
+    // Returns a Result<> containing either the value of the signal when the coupler
+    // is asked directly  (via get_signal_status()) or an Err containing the details
+    pub fn get_signal_directly(&mut self, signal_name: &String) -> Result<bool, String> {
+        let signal: &Signal = self.get_signal(signal_name)?;
         let signal_offset: u16 = signal.get_signal_offset().clone();
-        get_signal_status(&mut self.client, signal_offset)
+        Ok(get_signal_status(&mut self.client, signal_offset))
     }
 
     pub fn get_name(&mut self) -> &String {

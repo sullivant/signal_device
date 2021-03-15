@@ -6,6 +6,7 @@ use modbus::Client;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
+use std::time;
 use yaml_rust::YamlLoader;
 
 pub struct SignalDevice {
@@ -108,18 +109,29 @@ impl SignalDevice {
     }
 }
 
-pub fn new(device_name: String) -> SignalDevice {
+pub fn new(device_name: String) -> Result<SignalDevice, String> {
+    // The tcp_config object will let us specify a timeout
+    let mut tcp_config = tcp::Config::default();
+    tcp_config.tcp_connect_timeout = Some(time::Duration::from_millis(1000));
+
     let resource_location: String = format!("./thingy/resources/{}.yaml", device_name);
     println!("Creating signal device: {}", device_name);
     println!("Using device configuration at: {}", resource_location);
-    let file = File::open(resource_location.clone()).expect("Unable to open file.");
+    let file = match File::open(resource_location.clone()) {
+        Ok(f) => f,
+        Err(e) => return Err(format!("Unable to open device configuration: {}", e)),
+    };
+
     let mut buf_reader = BufReader::new(file);
     let mut contents = String::new();
     buf_reader
         .read_to_string(&mut contents)
         .expect("Unable to read input file.");
 
-    let device_yaml = YamlLoader::load_from_str(&contents).unwrap();
+    let device_yaml = match YamlLoader::load_from_str(&contents) {
+        Ok(c) => c,
+        Err(e) => return Err(format!("Unable parse device configuration: {}", e)),
+    };
     let device_conf = &device_yaml[0];
 
     // Get device coupler information
@@ -129,6 +141,11 @@ pub fn new(device_name: String) -> SignalDevice {
     // Get signals information out of the config file and create signal objects
     // for each record in the signals: hash
     let mut signals: Vec<Signal> = Vec::new();
+
+    let client = match tcp::Transport::new_with_cfg(&coupler, tcp_config) {
+        Ok(c) => c,
+        Err(e) => return Err(format!("Unable to create signal tcp connection: {}", e)),
+    };
 
     for signal_vec in device_conf["signals"].clone().as_vec() {
         for signal in signal_vec {
@@ -149,15 +166,13 @@ pub fn new(device_name: String) -> SignalDevice {
         }
     }
 
-    let client = tcp::Transport::new(&coupler).unwrap();
-
-    SignalDevice {
+    Ok(SignalDevice {
         device_name: device_name,
         coupler_address: coupler.to_string(),
         client: client,
         resource_location: resource_location,
         signals: signals,
-    }
+    })
 }
 
 // Reads one discrete input located at addr

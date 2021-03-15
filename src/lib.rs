@@ -1,6 +1,7 @@
 extern crate modbus;
 extern crate yaml_rust;
 
+use log::{info, warn};
 use modbus::tcp;
 use modbus::Client;
 use std::fs::File;
@@ -34,7 +35,7 @@ impl Signal {
     }
 
     pub fn new(signal_name: String, signal_type: String, signal_offset: u16) -> Signal {
-        println!(
+        info!(
             "Creating signal: {}, type: {}, offset: {}",
             signal_name, signal_type, signal_offset
         );
@@ -71,7 +72,6 @@ impl SignalDevice {
     // a reference to the struct <Signal> or an Err with the details about the missing
     // signal name
     pub fn get_signal(&mut self, signal_name: &String) -> Result<&Signal, String> {
-        //TODO: Make this return a named signal or ERR
         for s in &self.signals {
             if &s.signal_name == signal_name {
                 return Ok(&s);
@@ -115,8 +115,8 @@ pub fn new(device_name: String) -> Result<SignalDevice, String> {
     tcp_config.tcp_connect_timeout = Some(time::Duration::from_millis(1000));
 
     let resource_location: String = format!("./thingy/resources/{}.yaml", device_name);
-    println!("Creating signal device: {}", device_name);
-    println!("Using device configuration at: {}", resource_location);
+    info!("Creating signal device: {}", device_name);
+    info!("Using device configuration at: {}", resource_location);
     let file = match File::open(resource_location.clone()) {
         Ok(f) => f,
         Err(e) => return Err(format!("Unable to open device configuration: {}", e)),
@@ -136,15 +136,22 @@ pub fn new(device_name: String) -> Result<SignalDevice, String> {
 
     // Get device coupler information
     let coupler_raw = &device_conf["device"]["coupler"];
-    let coupler = coupler_raw.as_str().unwrap_or("127.0.0.1");
+    let coupler = match coupler_raw.as_str() {
+        Some(s) => s,
+        _ => {
+            warn!("Using default coupler IP of 127.0.0.1");
+            "127.0.0.1"
+        }
+    };
 
     // Get signals information out of the config file and create signal objects
     // for each record in the signals: hash
     let mut signals: Vec<Signal> = Vec::new();
 
+    info!("Connecting to coupler at {}", coupler);
     let client = match tcp::Transport::new_with_cfg(&coupler, tcp_config) {
         Ok(c) => c,
-        Err(e) => return Err(format!("Unable to create signal tcp connection: {}", e)),
+        Err(e) => return Err(format!("Unable to create tcp connection: {}", e)),
     };
 
     for signal_vec in device_conf["signals"].clone().as_vec() {

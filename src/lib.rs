@@ -4,6 +4,7 @@ extern crate yaml_rust;
 use log::{info, warn};
 use modbus::tcp;
 use modbus::Client;
+use std::fmt;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
@@ -60,10 +61,19 @@ impl Signal {
         &self.signal_type
     }
 
-    pub fn get_signal_status(&self) -> &bool {
+    pub fn signal_status(&self) -> &bool {
         //TODO: Make this updated via a scanner thread instead of via direct calls through
         //SignalDevice
         &self.signal_status
+    }
+}
+
+impl std::fmt::Debug for SignalDevice {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("SignalDevice")
+            .field("device_name", &self.device_name)
+            .field("coupler_address", &self.coupler_address)
+            .finish()
     }
 }
 
@@ -75,6 +85,16 @@ impl SignalDevice {
         for s in &self.signals {
             if &s.signal_name == signal_name {
                 return Ok(&s);
+            }
+        }
+
+        Err(format!("Unable to find signal: '{}'", signal_name))
+    }
+
+    pub fn get_signal_mut(&mut self, signal_name: &String) -> Result<&mut Signal, String> {
+        for s in &mut self.signals {
+            if &s.signal_name == signal_name {
+                return Ok(s);
             }
         }
 
@@ -95,6 +115,9 @@ impl SignalDevice {
 
     pub fn get_coupler_address(&mut self) -> &String {
         &self.coupler_address
+    }
+    pub fn set_coupler_address(&mut self, address: String) {
+        self.coupler_address = address;
     }
 
     pub fn get_resource_location(&mut self) -> &String {

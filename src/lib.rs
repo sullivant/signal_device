@@ -61,9 +61,11 @@ impl Signal {
         &self.signal_type
     }
 
-    pub fn signal_status(&self) -> &bool {
-        //TODO: Make this updated via a scanner thread instead of via direct calls through
-        //SignalDevice
+    pub fn set_signal_status(&mut self, new_val: bool) {
+        self.signal_status = new_val;
+    }
+
+    pub fn get_signal_status(&self) -> &bool {
         &self.signal_status
     }
 }
@@ -122,6 +124,14 @@ impl SignalDevice {
 
     pub fn get_resource_location(&mut self) -> &String {
         &self.resource_location
+    }
+
+    pub fn refresh_signals(&mut self) {
+        for signal in self.signals.iter_mut() {
+            let signal_offset: u16 = signal.get_signal_offset().clone();
+            let status = get_signal_status(&mut self.client, signal_offset);
+            signal.set_signal_status(status);
+        }
     }
 
     pub fn to_string(&mut self) -> String {

@@ -79,13 +79,23 @@ impl std::fmt::Debug for SignalDevice {
     }
 }
 
+impl fmt::Display for SignalDevice {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "For signal device {} using address of: {}",
+            &self.device_name, &self.coupler_address
+        )
+    }
+}
+
 impl SignalDevice {
     // Search through the hash of all signals, find the one by name referenced, and return
     // a reference to the struct <Signal> or an Err with the details about the missing
     // signal name
-    pub fn get_signal(&mut self, signal_name: &String) -> Result<&Signal, String> {
+    pub fn get_signal(&mut self, signal_name: &str) -> Result<&Signal, String> {
         for s in &self.signals {
-            if &s.signal_name == signal_name {
+            if s.signal_name == *signal_name {
                 return Ok(&s);
             }
         }
@@ -93,9 +103,9 @@ impl SignalDevice {
         Err(format!("Unable to find signal: '{}'", signal_name))
     }
 
-    pub fn get_signal_mut(&mut self, signal_name: &String) -> Result<&mut Signal, String> {
+    pub fn get_signal_mut(&mut self, signal_name: &str) -> Result<&mut Signal, String> {
         for s in &mut self.signals {
-            if &s.signal_name == signal_name {
+            if s.signal_name == *signal_name {
                 return Ok(s);
             }
         }
@@ -105,9 +115,9 @@ impl SignalDevice {
 
     // Returns a Result<> containing either the value of the signal when the coupler
     // is asked directly  (via get_signal_status()) or an Err containing the details
-    pub fn get_signal_directly(&mut self, signal_name: &String) -> Result<bool, String> {
+    pub fn get_signal_directly(&mut self, signal_name: &str) -> Result<bool, String> {
         let signal: &Signal = self.get_signal(signal_name)?;
-        let signal_offset: u16 = signal.get_signal_offset().clone();
+        let signal_offset: u16 = *signal.get_signal_offset();
         Ok(get_signal_status(&mut self.client, signal_offset))
     }
 
@@ -128,24 +138,21 @@ impl SignalDevice {
 
     pub fn refresh_signals(&mut self) {
         for signal in self.signals.iter_mut() {
-            let signal_offset: u16 = signal.get_signal_offset().clone();
+            let signal_offset: u16 = *signal.get_signal_offset();
             let status = get_signal_status(&mut self.client, signal_offset);
             signal.set_signal_status(status);
         }
-    }
-
-    pub fn to_string(&mut self) -> String {
-        format!(
-            "For signal device {} using address of: {}",
-            &self.device_name, &self.coupler_address
-        )
     }
 }
 
 pub fn new(device_name: String) -> Result<SignalDevice, String> {
     // The tcp_config object will let us specify a timeout
-    let mut tcp_config = tcp::Config::default();
-    tcp_config.tcp_connect_timeout = Some(time::Duration::from_millis(1000));
+    //let mut tcp_config = tcp::Config::default();
+    //tcp_config.tcp_connect_timeout = Some(time::Duration::from_millis(1000));
+    let tcp_config = modbus::Config {
+        tcp_connect_timeout: Some(time::Duration::from_millis(1000)),
+        ..Default::default()
+    };
 
     let resource_location: String = format!("./thingy/resources/{}.yaml", device_name);
     info!("Creating signal device: {}", device_name);
@@ -187,17 +194,17 @@ pub fn new(device_name: String) -> Result<SignalDevice, String> {
         Err(e) => return Err(format!("Unable to create tcp connection: {}", e)),
     };
 
-    for signal_vec in device_conf["signals"].clone().as_vec() {
+    if let Some(signal_vec) = device_conf["signals"].clone().as_vec() {
         for signal in signal_vec {
             let signal_name: String = signal["name"]
                 .clone()
                 .into_string()
-                .unwrap_or(format!("invalid_signal_name"));
+                .unwrap_or_else(|| "invalid_signal_name".to_string());
 
             let signal_type: String = signal["type"]
                 .clone()
                 .into_string()
-                .unwrap_or(format!("invalid_signal_type"));
+                .unwrap_or_else(|| "invalid_signal_type".to_string());
 
             let signal_offset: u16 = signal["offset"].clone().as_i64().unwrap_or(0) as u16;
 
@@ -207,11 +214,11 @@ pub fn new(device_name: String) -> Result<SignalDevice, String> {
     }
 
     Ok(SignalDevice {
-        device_name: device_name,
+        device_name,
         coupler_address: coupler.to_string(),
-        client: client,
-        resource_location: resource_location,
-        signals: signals,
+        client,
+        resource_location,
+        signals,
     })
 }
 

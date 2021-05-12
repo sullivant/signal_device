@@ -143,83 +143,83 @@ impl SignalDevice {
             signal.set_signal_status(status);
         }
     }
-}
 
-pub fn new(device_name: String) -> Result<SignalDevice, String> {
-    // The tcp_config object will let us specify a timeout
-    //let mut tcp_config = tcp::Config::default();
-    //tcp_config.tcp_connect_timeout = Some(time::Duration::from_millis(1000));
-    let tcp_config = modbus::Config {
-        tcp_connect_timeout: Some(time::Duration::from_millis(1000)),
-        ..Default::default()
-    };
+    pub fn new(device_name: &str) -> Result<SignalDevice, String> {
+        // The tcp_config object will let us specify a timeout
+        //let mut tcp_config = tcp::Config::default();
+        //tcp_config.tcp_connect_timeout = Some(time::Duration::from_millis(1000));
+        let tcp_config = modbus::Config {
+            tcp_connect_timeout: Some(time::Duration::from_millis(1000)),
+            ..Default::default()
+        };
 
-    let resource_location: String = format!("./thingy/resources/{}.yaml", device_name);
-    info!("Creating signal device: {}", device_name);
-    info!("Using device configuration at: {}", resource_location);
-    let file = match File::open(resource_location.clone()) {
-        Ok(f) => f,
-        Err(e) => return Err(format!("Unable to open device configuration: {}", e)),
-    };
+        let resource_location: String = format!("./thingy/resources/{}.yaml", device_name);
+        info!("Creating signal device: {}", device_name);
+        info!("Using device configuration at: {}", resource_location);
+        let file = match File::open(resource_location.clone()) {
+            Ok(f) => f,
+            Err(e) => return Err(format!("Unable to open device configuration: {}", e)),
+        };
 
-    let mut buf_reader = BufReader::new(file);
-    let mut contents = String::new();
-    buf_reader
-        .read_to_string(&mut contents)
-        .expect("Unable to read input file.");
+        let mut buf_reader = BufReader::new(file);
+        let mut contents = String::new();
+        buf_reader
+            .read_to_string(&mut contents)
+            .expect("Unable to read input file.");
 
-    let device_yaml = match YamlLoader::load_from_str(&contents) {
-        Ok(c) => c,
-        Err(e) => return Err(format!("Unable parse device configuration: {}", e)),
-    };
-    let device_conf = &device_yaml[0];
+        let device_yaml = match YamlLoader::load_from_str(&contents) {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Unable parse device configuration: {}", e)),
+        };
+        let device_conf = &device_yaml[0];
 
-    // Get device coupler information
-    let coupler_raw = &device_conf["device"]["coupler"];
-    let coupler = match coupler_raw.as_str() {
-        Some(s) => s,
-        _ => {
-            warn!("Using default coupler IP of 127.0.0.1");
-            "127.0.0.1"
+        // Get device coupler information
+        let coupler_raw = &device_conf["device"]["coupler"];
+        let coupler = match coupler_raw.as_str() {
+            Some(s) => s,
+            _ => {
+                warn!("Using default coupler IP of 127.0.0.1");
+                "127.0.0.1"
+            }
+        };
+
+        // Get signals information out of the config file and create signal objects
+        // for each record in the signals: hash
+        let mut signals: Vec<Signal> = Vec::new();
+
+        info!("Connecting to coupler at {}", coupler);
+        let client = match tcp::Transport::new_with_cfg(&coupler, tcp_config) {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Unable to create tcp connection: {}", e)),
+        };
+
+        if let Some(signal_vec) = device_conf["signals"].clone().as_vec() {
+            for signal in signal_vec {
+                let signal_name: String = signal["name"]
+                    .clone()
+                    .into_string()
+                    .unwrap_or_else(|| "invalid_signal_name".to_string());
+
+                let signal_type: String = signal["type"]
+                    .clone()
+                    .into_string()
+                    .unwrap_or_else(|| "invalid_signal_type".to_string());
+
+                let signal_offset: u16 = signal["offset"].clone().as_i64().unwrap_or(0) as u16;
+
+                let sig: Signal = Signal::new(signal_name, signal_type, signal_offset);
+                signals.push(sig);
+            }
         }
-    };
 
-    // Get signals information out of the config file and create signal objects
-    // for each record in the signals: hash
-    let mut signals: Vec<Signal> = Vec::new();
-
-    info!("Connecting to coupler at {}", coupler);
-    let client = match tcp::Transport::new_with_cfg(&coupler, tcp_config) {
-        Ok(c) => c,
-        Err(e) => return Err(format!("Unable to create tcp connection: {}", e)),
-    };
-
-    if let Some(signal_vec) = device_conf["signals"].clone().as_vec() {
-        for signal in signal_vec {
-            let signal_name: String = signal["name"]
-                .clone()
-                .into_string()
-                .unwrap_or_else(|| "invalid_signal_name".to_string());
-
-            let signal_type: String = signal["type"]
-                .clone()
-                .into_string()
-                .unwrap_or_else(|| "invalid_signal_type".to_string());
-
-            let signal_offset: u16 = signal["offset"].clone().as_i64().unwrap_or(0) as u16;
-
-            let sig: Signal = Signal::new(signal_name, signal_type, signal_offset);
-            signals.push(sig);
-        }
+        Ok(SignalDevice {
+            device_name: device_name.to_string(),
+            coupler_address: coupler.to_string(),
+            client,
+            resource_location,
+            signals,
+        })
     }
-
-    Ok(SignalDevice {
-        device_name,
-        coupler_address: coupler.to_string(),
-        client,
-        resource_location,
-        signals,
-    })
 }
 
 // Reads one discrete input located at addr
